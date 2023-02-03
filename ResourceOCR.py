@@ -34,15 +34,12 @@ class ResourceOCR:
 	cell_icon_offset = Rect(42, 22, 106, 106)
 	cell_held_offset = Rect(165, 70, 135, 45)
 	
-	def crop_to_cell_corner(self, source_image, intermediate = None):
+	def crop_to_cell_corner(self, source_image):
 		# Top left corner of the image should contain the cell corner
 		corner_found = False
 		for height_offset in [0, 30, 60]:
 			crop_rect = (38, 0, 360, 330 + height_offset)
 			haystack = source_image.crop(crop_rect)
-			if intermediate:
-				haystack.save(intermediate)
-			
 			corner_rect = pag.locate('icon\\cell_corner.png', haystack, confidence=0.95, grayscale=True)
 			if corner_rect != None:
 				corner_found = True
@@ -130,7 +127,7 @@ class ResourceOCR:
 				source_image = self.crop_to_cell_corner(source_image)
 				if source_image == False:
 					raise Exception("Couldn't locate cell.")
-				source_image.save(f"processed_{group}.png")
+				# source_image.save(f"processed_{group}.png")
 				
 				print(f"Processing {group:<7}...", end='')
 				
@@ -158,7 +155,7 @@ class ResourceOCR:
 							continue
 						
 						held_image = self.crop_held_image(source_image, col, row)
-						held_image.save(f"out\\held_image_{group.name}_{row}x{col}.png")
+						# held_image.save(f"out\\held_image_{group.name}_{row}x{col}.png")
 						
 						result = self.image_to_integer(held_image)
 						# print(f"{col} x {row} |  '{result}'")
@@ -284,7 +281,7 @@ class ResourceOCR:
 				continue
 			
 			icon_image = self.crop_icon_image(source_image, 0, 0)
-			icon_image.save("process/asdf_" + os.path.basename(source_file))
+			# icon_image.save("process/asdf_" + os.path.basename(source_file))
 			
 			member_found = False
 			for group, members in self.member_groups.items():
