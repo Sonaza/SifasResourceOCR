@@ -115,21 +115,32 @@ class ResourceOCR:
 
 	# --------------------------------------------------
 
-	def ocr_memorials(self, sources_by_group):
-		output = {}
-		for group, source_files in sources_by_group.items():
+	def print_results(self, results):
+		for group, data in results.items():
+			for name, resource in data.items():
+				print(f"{name:<10}\t{resource.memorial:<5}\t{resource.memento:<5}\t{resource.autograph}")
+			print()
+		print()
+	
+	# --------------------------------------------------
+	
+	def do_ocr(self):
+		memorial_sources, autograph_sources = ocr.identify_screenshots()
+		
+		unordered_results = {}
+		for group, source_files in memorial_sources.items():
 			remaining_members = set(self.member_groups[group])
 			num_rows = len(remaining_members) // 3
 			member_types_found = defaultdict(int)
 			
-			for source_file in source_files:
+			for index, source_file in enumerate(source_files):
 				source_image = Image.open(source_file)
 				source_image = self.crop_to_cell_corner(source_image)
 				if source_image == False:
 					raise Exception("Couldn't locate cell.")
-				# source_image.save(f"processed_{group}.png")
+				# source_image.save(f"processed_{group.name}.png")
 				
-				print(f"Processing {group:<7}...", end='')
+				print(f"Processing {group.name + ' ' + str(index + 1):<16} ...", end='')
 				
 				for row in range(0, num_rows):
 					for col in range(0, 6):
@@ -157,57 +168,50 @@ class ResourceOCR:
 						held_image = self.crop_held_image(source_image, col, row)
 						# held_image.save(f"out\\held_image_{group.name}_{row}x{col}.png")
 						
-						result = self.image_to_integer(held_image)
-						# print(f"{col} x {row} |  '{result}'")
+						num_items = self.image_to_integer(held_image)
+						# print(f"{col} x {row} |  '{num_items}'")
 						
-						if group not in output:
-							output[group] = {}
-						if member_name not in output[group]:
-							output[group][member_name] = Resources(-1, -1, -1)
+						if group not in unordered_results:
+							unordered_results[group] = {}
+						if member_name not in unordered_results[group]:
+							unordered_results[group][member_name] = Resources(-1, -1, -1)
 						
 						if type_index == 0:
-							output[group][member_name].memorial = result
+							unordered_results[group][member_name].memorial = num_items
 						elif type_index == 1:
-							output[group][member_name].memento  = result
-						
+							unordered_results[group][member_name].memento  = num_items
 					print(".", end='')
 				
 				print(" Done!")
 		
 			if remaining_members:
-				print(f"Warning! {len(remaining_members)} missing members in {group} : {remaining_members}")
+				print(f"  Warning! {len(remaining_members)} missing members in {group} : {remaining_members}")
 				for member_name in remaining_members:
-					print(f"  {member_name:<9} : {member_types_found[member_name]}/2 found")
-					if group not in output:
-						output[group] = {}
-					if member_name not in output[group]:
-						output[group][member_name] = [-1, -1]
+					print(f"    {member_name:<9} : {member_types_found[member_name]}/2 found")
 			else:
-				print(f"No missing members in {group}, yay!")
+				print(f"  No missing members in {group.name}, yay!")
 			print()
 			
-		sorted_output = {}
+		results = {}
 		for group, members in self.member_groups.items():
-			sorted_output[group] = {member: Resources(-1, -1, -1) for member in members}	
+			results[group] = {member: Resources(-1, -1, -1) for member in members}	
 			for name in members:
-				if name in output[group]:
-					sorted_output[group][name] = output[group][name]
+				if name in unordered_results[group]:
+					results[group][name] = unordered_results[group][name]
 		
-		return sorted_output
-
-	# --------------------------------------------------
-	
-	def ocr_autographs(self, source_files):
-		output = {}
+		# --------------------------
+		
 		handled_members = set()
-		remaining_members = set([x for members in self.member_groups.values() for x in members])
-		for index, source_file in enumerate(source_files):
+		member_to_group = {name: group for group, members in self.member_groups.items() for name in members}
+		remaining_members = set([name for members in self.member_groups.values() for name in members])
+		
+		for index, source_file in enumerate(autograph_sources):
 			source_image = Image.open(source_file)
 			source_image = self.crop_to_cell_corner(source_image)
 			if source_image == False:
 				raise Exception("Couldn't locate cell.")
 			
-			print(f"Processing autographs {index + 1}...", end='')
+			print(f"Processing autographs {index + 1:<6}...", end='')
 			
 			for row in range(0, 4):
 				for col in range(0, 6):
@@ -225,47 +229,27 @@ class ResourceOCR:
 						continue
 						
 					held_image = self.crop_held_image(source_image, col, row)
-					result = self.image_to_integer(held_image)
+					num_items = self.image_to_integer(held_image)
 					
-					output[member_name] = result
+					member_group = member_to_group[member_name]
+					results[member_group][member_name].autograph = num_items
 				print(".", end='')
 			
 			print(" Done!")
 		
 		if remaining_members:
-			print(f"Missing members: {len(remaining_members)}")
-			print(remaining_members)
+			print(f"  Warning! Missing members: {len(remaining_members)}")
+			print("    ", remaining_members)
 			print()
 		else:
-			print("No missing members, yay!")
+			print("  No missing members, yay!")
 		print()
-		
-		return output
 
-	# --------------------------------------------------
-
-	def print_results(self, results):
-		for group, data in results.items():
-			for name, resource in data.items():
-				print(f"{name:<10}\t{resource.memorial:<5}\t{resource.memento:<5}\t{resource.autograph}")
-			print()
-		print()
-	
-	def do_ocr(self):
-		input_memorials, input_autographs = ocr.identify_screenshots()
-
-		results    = self.ocr_memorials(input_memorials)
-		autographs = self.ocr_autographs(input_autographs)
-		
-		for group, data in results.items():
-			for name, value in autographs.items():
-				if name in data:
-					data[name].autograph = value
-		
-		self.print_results(results)
+		return results
 	
 	def identify_screenshots(self):
-		screenshot_folder = r"C:\Users\Sonaza\Nox_share\ImageShare\Screenshots"
+		from pathlib import Path
+		screenshot_folder = os.path.join(str(Path.home()), "Nox_share\\ImageShare\\Screenshots")
 		nox_screenshots = glob.glob(os.path.join(screenshot_folder, "Screenshot_*.png"))[-15:]
 		
 		memorials = {group: [] for group in Group}
@@ -273,7 +257,7 @@ class ResourceOCR:
 		
 		for source_file in reversed(nox_screenshots):
 			source_image = Image.open(source_file)
-			source_image = self.crop_to_cell_corner(source_image, "process/corner_" + os.path.basename(source_file))
+			source_image = self.crop_to_cell_corner(source_image)
 			# source_image.save("process/corner_" + os.path.basename(source_file))
 			
 			# Corner not found but it's not a fatal error
@@ -308,18 +292,17 @@ class ResourceOCR:
 				if autograp_found:
 					break
 		
-		print(memorials)
-		print()
-		print(autographs)
+		if any([not memorials[group] for group in Group]):
+			missing_groups = [group.name for group in Group if not memorials[group]]
+			raise Exception(f"Didn't find valid screenshot for some groups: {', '.join(missing_groups)}")
+		
+		if not autographs:
+			raise Exception("Didn't find valid screenshots for autographs.")
 		
 		return memorials, autographs
 		
-		
 # -----------------------------------------------
 
-# input_memorials  = list(zip(["muse", "aqours", "niji"], nox_screenshots[0:3]))
-# input_autographs = list(zip(["auto1", "auto2"], nox_screenshots[3:5]))
-
 ocr = ResourceOCR()
-ocr.do_ocr()
-
+results = ocr.do_ocr()
+ocr.print_results(results)
